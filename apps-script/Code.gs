@@ -29,22 +29,62 @@ const CONFIG = {
  */
 function addWeeklyRows() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('No active spreadsheet bound to this script.');
+  }
+  Logger.log('Spreadsheet: %s (%s)', ss.getName(), ss.getUrl());
+
   const sheet = ss.getSheetByName(CONFIG.sheetName);
   if (!sheet) {
-    throw new Error('Sheet "' + CONFIG.sheetName + '" not found.');
+    const available = ss.getSheets().map(s => s.getName()).join(', ');
+    throw new Error(
+      'Sheet "' + CONFIG.sheetName + '" not found. Available tabs: ' + available
+    );
   }
 
   const layout = scanWeekBlocks(sheet);
   const nextRange = computeNextWeekRange(layout);
   const label = formatWeekLabel(nextRange.start, nextRange.end);
 
-  if (layout.blocks.some(b => b.label === label)) {
-    Logger.log('Week %s already exists, skipping.', label);
+  const existing = layout.blocks.find(b => b.label === label);
+  if (existing) {
+    Logger.log('Week %s already exists at row %s, skipping insert.', label, existing.startRow);
+    focusBlock(sheet, existing.startRow, existing.endRow - existing.startRow + 1);
     return;
   }
 
-  insertWeekBlock(sheet, layout, label);
-  Logger.log('Inserted week block: %s', label);
+  const insertedAt = insertWeekBlock(sheet, layout, label);
+  focusBlock(sheet, insertedAt, CONFIG.rowsPerWeek);
+  Logger.log('Inserted week block "%s" at row %s on tab "%s".', label, insertedAt, sheet.getName());
+}
+
+/**
+ * Jump the active view to the new block so it's obvious where it landed.
+ */
+function focusBlock(sheet, startRow, numRows) {
+  try {
+    sheet.activate();
+    const range = sheet.getRange(startRow, 1, numRows, CONFIG.totalColumns);
+    sheet.setActiveRange(range);
+  } catch (e) {
+    Logger.log('focusBlock skipped: %s', e);
+  }
+}
+
+/**
+ * Diagnostic: log which spreadsheet + tabs this script is bound to.
+ * Run this once if `addWeeklyRows` reports success but you don't see changes.
+ */
+function whereAmI() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    Logger.log('No active spreadsheet. This script is probably standalone, not bound to a sheet.');
+    return;
+  }
+  Logger.log('Name: %s', ss.getName());
+  Logger.log('URL:  %s', ss.getUrl());
+  Logger.log('Tabs: %s', ss.getSheets().map(s => s.getName()).join(' | '));
+  Logger.log('Target tab "%s" exists: %s', CONFIG.sheetName, !!ss.getSheetByName(CONFIG.sheetName));
 }
 
 /**
@@ -124,20 +164,14 @@ function findHeaderRow(sheet, lastRow) {
 }
 
 /**
- * Pick the latest known week and return the following week's start/end dates.
- * If no parseable week exists, use the current week containing "today".
+ * Return the Sun-Sat range of the week that contains "today".
+ *
+ * We deliberately ignore whatever is already in the sheet and anchor on
+ * today's date: the goal is "add the current week each Sunday", and that's
+ * robust against weird labels or stale historical data.
  */
-function computeNextWeekRange(layout) {
-  let latest = null;
-  for (const b of layout.blocks) {
-    if (b.end && (!latest || b.end > latest)) latest = b.end;
-  }
-  let start;
-  if (latest) {
-    start = new Date(latest.getFullYear(), latest.getMonth(), latest.getDate() + 1);
-  } else {
-    start = startOfWeek(new Date(), CONFIG.weekStartsOn);
-  }
+function computeNextWeekRange(_layout) {
+  const start = startOfWeek(new Date(), CONFIG.weekStartsOn);
   const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
   return { start: start, end: end };
 }
@@ -179,6 +213,8 @@ function insertWeekBlock(sheet, layout, label) {
   sheet
     .getRange(insertAt, CONFIG.weekColumn, rows, CONFIG.totalColumns)
     .setBorder(true, true, true, true, true, true);
+
+  return insertAt;
 }
 
 function isNewestFirst(blocks) {
