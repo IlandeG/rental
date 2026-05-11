@@ -184,23 +184,13 @@ function startOfWeek(date, weekStartsOn) {
 }
 
 /**
- * Insert a new week block. If the existing blocks are ordered newest-first
- * (the case in your sheet), insert at the top of the data area; otherwise
- * append at the bottom.
+ * Insert a new week block at the top of the data area, directly under
+ * the header row. Existing blocks shift down.
  */
 function insertWeekBlock(sheet, layout, label) {
-  const newestFirst = isNewestFirst(layout.blocks);
   const rows = CONFIG.rowsPerWeek;
-  let insertAt;
-
-  if (newestFirst || layout.blocks.length === 0) {
-    insertAt = layout.headerRow + 1;
-    sheet.insertRowsBefore(insertAt, rows);
-  } else {
-    const last = layout.blocks[layout.blocks.length - 1];
-    insertAt = last.endRow + 1;
-    sheet.insertRowsAfter(last.endRow, rows);
-  }
+  const insertAt = layout.headerRow + 1;
+  sheet.insertRowsBefore(insertAt, rows);
 
   const weekRange = sheet.getRange(insertAt, CONFIG.weekColumn, rows, 1);
   weekRange.merge();
@@ -215,15 +205,6 @@ function insertWeekBlock(sheet, layout, label) {
     .setBorder(true, true, true, true, true, true);
 
   return insertAt;
-}
-
-function isNewestFirst(blocks) {
-  const dated = blocks.filter(b => b.end);
-  if (dated.length < 2) return true; // default to top-insert; matches the screenshot
-  for (let i = 1; i < dated.length; i++) {
-    if (dated[i].end > dated[i - 1].end) return false;
-  }
-  return true;
 }
 
 /**
