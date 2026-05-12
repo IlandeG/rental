@@ -54,8 +54,8 @@ function addWeeklyRows() {
   }
 
   const insertedAt = insertWeekBlock(sheet, layout, label);
-  focusBlock(sheet, insertedAt, CONFIG.rowsPerWeek);
   Logger.log('Inserted week block "%s" at row %s on tab "%s".', label, insertedAt, sheet.getName());
+  focusBlock(sheet, insertedAt, CONFIG.rowsPerWeek);
 }
 
 /**
@@ -191,6 +191,12 @@ function insertWeekBlock(sheet, layout, label) {
   const rows = CONFIG.rowsPerWeek;
   const insertAt = layout.headerRow + 1;
   sheet.insertRowsBefore(insertAt, rows);
+
+  // Defensive: existing merges in adjacent rows can absorb the new rows
+  // when we insertRowsBefore. Break any merge that touches our target
+  // range before re-merging it cleanly.
+  const blockRange = sheet.getRange(insertAt, 1, rows, CONFIG.totalColumns);
+  blockRange.breakApart();
 
   const weekRange = sheet.getRange(insertAt, CONFIG.weekColumn, rows, 1);
   weekRange.merge();
